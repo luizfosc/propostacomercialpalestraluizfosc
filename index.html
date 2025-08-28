@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -153,16 +154,20 @@
             const [isLoading, setIsLoading] = useState(true);
             const [isGenerating, setIsGenerating] = useState(false);
             const [generatedUrl, setGeneratedUrl] = useState(null);
-            // NOVO: Estado para controlar erros de carregamento
             const [loadingError, setLoadingError] = useState(null);
 
             useEffect(() => {
-                // NOVO: Timeout para verificar se as APIs carregam
+                // NOVO: Verifica se o app está rodando de um arquivo local
+                if (window.location.protocol === 'file:') {
+                    setLoadingError("Este aplicativo não pode ser executado de um arquivo local (file://). Por favor, use um servidor web local para testá-lo.");
+                    return;
+                }
+
                 const loadTimeout = setTimeout(() => {
-                    if (!window.gapi || !window.google) {
+                    if (!window.gapi?.client || !window.google?.accounts) {
                         setLoadingError("Falha ao carregar as APIs do Google. Verifique se seu navegador (ex: Brave) ou extensão está bloqueando os scripts. Tente desativar o bloqueador de anúncios para esta página.");
                     }
-                }, 10000); // 10 segundos de espera
+                }, 10000);
 
                 const apiScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]');
                 apiScript.onload = () => {
@@ -179,7 +184,7 @@
 
                 const gisScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
                 gisScript.onload = () => {
-                    clearTimeout(loadTimeout); // Limpa o timeout se os scripts carregarem com sucesso
+                    clearTimeout(loadTimeout);
                     const tokenClient = google.accounts.oauth2.initTokenClient({
                         client_id: GOOGLE_CLIENT_ID,
                         scope: SCOPES,
@@ -207,17 +212,14 @@
                     setGisReady(true);
                 };
 
-                return () => clearTimeout(loadTimeout); // Limpeza do timeout
+                return () => clearTimeout(loadTimeout);
             }, []);
 
             useEffect(() => {
                 if (gisReady && !user) {
                     const buttonDiv = document.getElementById('google-signin-button');
                     if (buttonDiv) {
-                      window.google.accounts.id.renderButton(
-                          buttonDiv,
-                          { theme: 'outline', size: 'large', text: 'signin_with' }
-                      );
+                      window.google.accounts.id.renderButton(buttonDiv, { theme: 'outline', size: 'large', text: 'signin_with' });
                       window.google.accounts.id.prompt();
                     }
                 }
@@ -295,14 +297,13 @@
                 }
             };
 
-            // NOVO: Renderização condicional para o erro de carregamento
             if (loadingError) {
                 return (
                     <div className="flex items-center justify-center h-screen bg-red-50 text-red-800 p-8">
                         <div className="text-center">
                             <i data-lucide="alert-triangle" className="w-16 h-16 mx-auto mb-4"></i>
-                            <h2 className="text-2xl font-bold mb-2">Erro ao Carregar</h2>
-                            <p>{loadingError}</p>
+                            <h2 className="text-2xl font-bold mb-2">Erro de Configuração</h2>
+                            <p className="max-w-xl">{loadingError}</p>
                         </div>
                     </div>
                 );
