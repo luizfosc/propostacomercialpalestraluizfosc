@@ -41,7 +41,7 @@
         // --- FIM DA CONFIGURAÇÃO DO FIREBASE ---
 
         // ==================================================================
-        // COLE SUAS CREDENCIAIS DO GOOGLE AQUI
+        // SUAS CREDENCIAIS DO GOOGLE
         // ==================================================================
         const GOOGLE_API_KEY = 'AIzaSyDW-rF7rJ4Ar-533kuNod24d9x7j0XD_68';
         const GOOGLE_CLIENT_ID = '57826649543-8put6obtsqllqp7vonr04dkt2iifd2op.apps.googleusercontent.com';
@@ -146,81 +146,86 @@
         };
 
         function App() {
-            const [gapiReady, setGapiReady] = useState(false);
-            const [gisReady, setGisReady] = useState(false);
             const [user, setUser] = useState(null);
             const [proposals, setProposals] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
             const [isGenerating, setIsGenerating] = useState(false);
             const [generatedUrl, setGeneratedUrl] = useState(null);
+            const [loadingStatus, setLoadingStatus] = useState('Iniciando...');
             const [loadingError, setLoadingError] = useState(null);
 
             useEffect(() => {
+                setLoadingStatus('Verificando ambiente...');
                 if (window.location.protocol === 'file:') {
                     setLoadingError("Este aplicativo não pode ser executado de um arquivo local (file://). Por favor, use um servidor web local para testá-lo.");
                     return;
                 }
 
                 const loadTimeout = setTimeout(() => {
-                    if (!window.gapi?.client || !window.google?.accounts) {
-                        setLoadingError("Falha ao carregar as APIs do Google. Verifique se seu navegador (ex: Brave) ou extensão está bloqueando os scripts. Tente desativar o bloqueador de anúncios para esta página.");
+                    if (!window.gapi?.client || !window.google?.accounts?.id) {
+                         setLoadingError("Falha ao carregar as APIs do Google. Isso geralmente é causado por um bloqueador de anúncios (como o do Brave) ou uma extensão de privacidade. Tente desativar o bloqueador para esta página e recarregue.");
                     }
                 }, 10000);
 
-                const apiScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]');
-                apiScript.onload = () => {
-                    gapi.load('client', async () => {
-                        await gapi.client.init({
-                            apiKey: GOOGLE_API_KEY,
-                            clientId: GOOGLE_CLIENT_ID,
-                            discoveryDocs: DISCOVERY_DOCS,
-                            scope: SCOPES,
-                        }).then(() => setGapiReady(true));
-                    });
-                };
-
+                setLoadingStatus('Carregando API de Login do Google (GIS)...');
                 const gisScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
                 gisScript.onload = () => {
-                    clearTimeout(loadTimeout);
-                    const tokenClient = google.accounts.oauth2.initTokenClient({
-                        client_id: GOOGLE_CLIENT_ID,
-                        scope: SCOPES,
-                        callback: async (tokenResponse) => {
-                            if (tokenResponse.access_token) {
-                                gapi.client.setToken(tokenResponse);
-                                const profile = await fetchUserProfile();
-                                if (profile) setUser(profile);
-                            }
-                        },
-                    });
-                    
-                    window.google.accounts.id.initialize({
-                        client_id: GOOGLE_CLIENT_ID,
-                        callback: async (response) => {
-                            const payload = JSON.parse(atob(response.credential.split('.')[1]));
-                            if(payload.email === ALLOWED_EMAIL) {
-                                tokenClient.requestAccessToken({ prompt: '' });
-                            } else {
-                                alert("Acesso negado. Apenas o usuário " + ALLOWED_EMAIL + " pode usar este aplicativo.");
-                                handleSignout();
-                            }
-                        },
-                    });
-                    setGisReady(true);
+                    setLoadingStatus('Carregando APIs do Drive & Slides (GAPI)...');
+                    const apiScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]');
+                    apiScript.onload = () => {
+                        setLoadingStatus('Inicializando cliente GAPI...');
+                        gapi.load('client', () => {
+                            gapi.client.init({
+                                apiKey: GOOGLE_API_KEY,
+                                clientId: GOOGLE_CLIENT_ID,
+                                discoveryDocs: DISCOVERY_DOCS,
+                                scope: SCOPES,
+                            }).then(() => {
+                                setLoadingStatus('Inicializando serviço de identidade...');
+                                const tokenClient = google.accounts.oauth2.initTokenClient({
+                                    client_id: GOOGLE_CLIENT_ID,
+                                    scope: SCOPES,
+                                    callback: async (tokenResponse) => {
+                                        if (tokenResponse.access_token) {
+                                            gapi.client.setToken(tokenResponse);
+                                            const profile = await fetchUserProfile();
+                                            if (profile) setUser(profile);
+                                        }
+                                    },
+                                });
+                                
+                                window.google.accounts.id.initialize({
+                                    client_id: GOOGLE_CLIENT_ID,
+                                    callback: async (response) => {
+                                        const payload = JSON.parse(atob(response.credential.split('.')[1]));
+                                        if(payload.email === ALLOWED_EMAIL) {
+                                            tokenClient.requestAccessToken({ prompt: '' });
+                                        } else {
+                                            alert("Acesso negado. Apenas o usuário " + ALLOWED_EMAIL + " pode usar este aplicativo.");
+                                            handleSignout();
+                                        }
+                                    },
+                                });
+                                setLoadingStatus('Pronto para login.');
+                                clearTimeout(loadTimeout);
+                                setLoadingStatus(null); // Limpa o status de carregamento
+                            });
+                        });
+                    };
                 };
 
                 return () => clearTimeout(loadTimeout);
             }, []);
 
             useEffect(() => {
-                if (gisReady && !user) {
+                if (loadingStatus === null && !user) {
                     const buttonDiv = document.getElementById('google-signin-button');
                     if (buttonDiv) {
                       window.google.accounts.id.renderButton(buttonDiv, { theme: 'outline', size: 'large', text: 'signin_with' });
                       window.google.accounts.id.prompt();
                     }
                 }
-            }, [gisReady, user]);
+            }, [loadingStatus, user]);
 
             useEffect(() => {
                 if (!user) return;
@@ -306,8 +311,8 @@
                 );
             }
 
-            if (!gapiReady || !gisReady) {
-                return <div className="flex items-center justify-center h-screen">Carregando APIs do Google...</div>;
+            if (loadingStatus) {
+                return <div className="flex items-center justify-center h-screen">{loadingStatus}</div>;
             }
 
             if (!user) {
